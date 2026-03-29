@@ -1,0 +1,1348 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HandScan — Pedra Papel Tesoura</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --panel: #111118;
+        --border: #1e1e2e;
+        --accent: #e8ff47;
+        --accent2: #ff4f7b;
+        --accent3: #47c8ff;
+        --text: #f0f0f8;
+        --muted: #5a5a7a;
+        --pedra: #47c8ff;
+        --papel: #e8ff47;
+        --tesoura: #ff4f7b;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(232, 255, 71, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(232, 255, 71, 0.03) 1px, transparent 1px);
+        background-size: 48px 48px;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .container {
+        position: relative;
+        z-index: 1;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 32px 24px;
+      }
+
+      /* Header */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 48px;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo-icon {
+        width: 40px;
+        height: 40px;
+        border: 2px solid var(--accent);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        animation: pulse-border 3s ease-in-out infinite;
+      }
+
+      @keyframes pulse-border {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(232, 255, 71, 0.4);
+        }
+        50% {
+          box-shadow: 0 0 0 8px rgba(232, 255, 71, 0);
+        }
+      }
+
+      .logo-text {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 24px;
+        letter-spacing: -0.5px;
+      }
+      .logo-text span {
+        color: var(--accent);
+      }
+
+      .badge {
+        font-size: 11px;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+        padding: 4px 10px;
+        border-radius: 100px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
+
+      /* Hero */
+      .hero {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .hero h1 {
+        font-family: "Syne", sans-serif;
+        font-size: clamp(36px, 6vw, 72px);
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -2px;
+        margin-bottom: 16px;
+      }
+
+      .hero h1 .line2 {
+        color: var(--accent);
+      }
+
+      .hero p {
+        color: var(--muted);
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        max-width: 480px;
+        margin: 0 auto;
+        line-height: 1.6;
+      }
+
+      /* Main layout */
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      @media (max-width: 780px) {
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Camera panel */
+      .camera-panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .camera-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .camera-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--muted);
+      }
+
+      .live-dot {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .dot.active {
+        background: var(--accent);
+        animation: blink 1.2s ease-in-out infinite;
+      }
+
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      .camera-body {
+        position: relative;
+        aspect-ratio: 4/3;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #webcam-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #webcam-container canvas {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover;
+      }
+
+      .camera-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+      }
+      .camera-placeholder .icon {
+        font-size: 48px;
+        opacity: 0.4;
+      }
+      .camera-placeholder p {
+        font-size: 13px;
+        letter-spacing: 0.5px;
+      }
+
+      .scan-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .scan-overlay::before,
+      .scan-overlay::after {
+        content: "";
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-color: var(--accent);
+        border-style: solid;
+        opacity: 0.7;
+      }
+      .scan-overlay::before {
+        top: 12px;
+        left: 12px;
+        border-width: 2px 0 0 2px;
+        border-radius: 4px 0 0 0;
+      }
+      .scan-overlay::after {
+        top: 12px;
+        right: 12px;
+        border-width: 2px 2px 0 0;
+        border-radius: 0 4px 0 0;
+      }
+      .scan-overlay-b::before,
+      .scan-overlay-b::after {
+        content: "";
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-color: var(--accent);
+        border-style: solid;
+        opacity: 0.7;
+      }
+      .scan-overlay-b::before {
+        bottom: 12px;
+        left: 12px;
+        border-width: 0 0 2px 2px;
+        border-radius: 0 0 0 4px;
+      }
+      .scan-overlay-b::after {
+        bottom: 12px;
+        right: 12px;
+        border-width: 0 2px 2px 0;
+        border-radius: 0 0 4px 0;
+      }
+
+      .scan-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--accent),
+          transparent
+        );
+        opacity: 0;
+        z-index: 3;
+      }
+      .scan-line.active {
+        opacity: 0.5;
+        animation: scan 2.5s ease-in-out infinite;
+      }
+      @keyframes scan {
+        0% {
+          top: 0;
+        }
+        100% {
+          top: 100%;
+        }
+      }
+
+      .camera-footer {
+        padding: 20px;
+        display: flex;
+        gap: 12px;
+      }
+
+      .btn-start {
+        flex: 1;
+        background: var(--accent);
+        color: #0a0a0f;
+        border: none;
+        border-radius: 10px;
+        padding: 14px 24px;
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+      }
+      .btn-start:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 24px rgba(232, 255, 71, 0.3);
+      }
+      .btn-start:active {
+        transform: translateY(0);
+      }
+      .btn-start:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .btn-stop {
+        background: transparent;
+        color: var(--accent2);
+        border: 1px solid var(--accent2);
+        border-radius: 10px;
+        padding: 14px 20px;
+        font-family: "DM Mono", monospace;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: none;
+      }
+      .btn-stop.visible {
+        display: block;
+      }
+      .btn-stop:hover {
+        background: rgba(255, 79, 123, 0.1);
+      }
+
+      /* Right panel */
+      .right-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      /* Gesto detectado card */
+      .gesto-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.4s;
+      }
+      .gesto-card.active-pedra {
+        border-color: var(--pedra);
+      }
+      .gesto-card.active-papel {
+        border-color: var(--papel);
+      }
+      .gesto-card.active-tesoura {
+        border-color: var(--tesoura);
+      }
+
+      .gesto-glow {
+        position: absolute;
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        top: -80px;
+        right: -60px;
+        opacity: 0;
+        transition: all 0.5s;
+        pointer-events: none;
+        filter: blur(60px);
+      }
+      .gesto-card.active-pedra .gesto-glow {
+        background: var(--pedra);
+        opacity: 0.12;
+      }
+      .gesto-card.active-papel .gesto-glow {
+        background: var(--papel);
+        opacity: 0.12;
+      }
+      .gesto-card.active-tesoura .gesto-glow {
+        background: var(--tesoura);
+        opacity: 0.12;
+      }
+
+      .section-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+
+      .gesto-main {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .gesto-emoji {
+        font-size: 56px;
+        line-height: 1;
+        transition: transform 0.3s;
+      }
+      .gesto-card.active-pedra .gesto-emoji {
+        transform: scale(1.05);
+      }
+      .gesto-card.active-papel .gesto-emoji {
+        transform: scale(1.05) rotate(-5deg);
+      }
+      .gesto-card.active-tesoura .gesto-emoji {
+        transform: scale(1.05) rotate(5deg);
+      }
+
+      .gesto-info {
+        flex: 1;
+      }
+
+      .gesto-name {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 28px;
+        line-height: 1;
+        margin-bottom: 4px;
+        transition: color 0.4s;
+      }
+      .gesto-card.active-pedra .gesto-name {
+        color: var(--pedra);
+      }
+      .gesto-card.active-papel .gesto-name {
+        color: var(--papel);
+      }
+      .gesto-card.active-tesoura .gesto-name {
+        color: var(--tesoura);
+      }
+
+      .gesto-conf {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* Barras */
+      .bars {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bar-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .bar-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+      }
+      .bar-label {
+        color: var(--muted);
+      }
+      .bar-track {
+        height: 6px;
+        background: var(--border);
+        border-radius: 100px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        border-radius: 100px;
+        transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        width: 0%;
+      }
+      .bar-fill.pedra {
+        background: var(--pedra);
+      }
+      .bar-fill.papel {
+        background: var(--papel);
+      }
+      .bar-fill.tesoura {
+        background: var(--tesoura);
+      }
+
+      /* Batalha card — IA vs Jogador */
+      .battle-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+      }
+
+      .battle-arena {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .battle-side {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+      }
+
+      .battle-who {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--muted);
+      }
+
+      .battle-gesto {
+        font-size: 48px;
+        line-height: 1;
+        transition:
+          transform 0.3s,
+          opacity 0.3s;
+      }
+
+      .battle-gesto-name {
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .battle-vs {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 20px;
+        color: var(--border);
+        flex-shrink: 0;
+      }
+
+      .resultado-badge {
+        text-align: center;
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 18px;
+        letter-spacing: 1px;
+        transition: all 0.4s;
+        background: var(--border);
+        color: var(--muted);
+      }
+      .resultado-badge.vitoria {
+        background: rgba(232, 255, 71, 0.12);
+        color: var(--papel);
+        border: 1px solid rgba(232, 255, 71, 0.3);
+      }
+      .resultado-badge.derrota {
+        background: rgba(255, 79, 123, 0.12);
+        color: var(--tesoura);
+        border: 1px solid rgba(255, 79, 123, 0.3);
+      }
+      .resultado-badge.empate {
+        background: rgba(71, 200, 255, 0.12);
+        color: var(--pedra);
+        border: 1px solid rgba(71, 200, 255, 0.3);
+      }
+
+      /* Placar */
+      .placar-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+      }
+
+      .placar-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 10px;
+      }
+
+      .placar-item {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        text-align: center;
+      }
+
+      .placar-val {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 28px;
+        line-height: 1;
+      }
+      .placar-val.wins {
+        color: var(--papel);
+      }
+      .placar-val.losses {
+        color: var(--tesoura);
+      }
+      .placar-val.draws {
+        color: var(--pedra);
+      }
+
+      .placar-lbl {
+        font-size: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-top: 4px;
+      }
+
+      /* Histórico */
+      .log-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+      }
+      .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .log-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--muted);
+      }
+      .btn-clear {
+        font-size: 10px;
+        color: var(--muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: color 0.2s;
+        font-family: "DM Mono", monospace;
+      }
+      .btn-clear:hover {
+        color: var(--accent2);
+      }
+      .log-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 160px;
+        overflow-y: auto;
+        scrollbar-width: none;
+      }
+      .log-list::-webkit-scrollbar {
+        display: none;
+      }
+      .log-entry {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 11px;
+        animation: slideIn 0.25s ease;
+      }
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      .log-time {
+        color: var(--muted);
+        min-width: 42px;
+      }
+      .log-icon {
+        flex-shrink: 0;
+      }
+      .log-text {
+        flex: 1;
+      }
+      .log-res {
+        font-weight: 700;
+      }
+      .log-res.v {
+        color: var(--papel);
+      }
+      .log-res.d {
+        color: var(--tesoura);
+      }
+      .log-res.e {
+        color: var(--pedra);
+      }
+      .log-empty {
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+        padding: 20px 0;
+      }
+
+      /* Model config */
+      .model-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+        margin-top: 20px;
+      }
+      .model-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+      .model-url-input {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        color: var(--text);
+        margin-bottom: 8px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .model-url-input:focus {
+        border-color: var(--accent);
+      }
+      .model-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        margin-top: 6px;
+      }
+      .model-status .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .model-status .dot.ok {
+        background: var(--papel);
+        animation: blink 2s infinite;
+      }
+      .model-status .dot.err {
+        background: var(--tesoura);
+      }
+      .demo-notice {
+        background: rgba(232, 255, 71, 0.05);
+        border: 1px solid rgba(232, 255, 71, 0.2);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 11px;
+        color: var(--accent);
+        line-height: 1.5;
+        margin-top: 8px;
+      }
+      .model-hint {
+        font-size: 10px;
+        color: var(--muted);
+        line-height: 1.5;
+        margin-top: 8px;
+      }
+      .model-hint a {
+        color: var(--accent3);
+        text-decoration: none;
+      }
+
+      /* Status bar */
+      .status-bar {
+        margin-top: 32px;
+        padding: 12px 20px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(80px);
+        background: var(--accent);
+        color: #0a0a0f;
+        padding: 10px 20px;
+        border-radius: 100px;
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        z-index: 100;
+        white-space: nowrap;
+      }
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header>
+        <div class="logo">
+          <div class="logo-icon">✊</div>
+          <div class="logo-text">Hand<span>Scan</span></div>
+        </div>
+        <div class="badge">Teachable Machine</div>
+      </header>
+
+      <!-- Hero -->
+      <div class="hero">
+        <h1>Pedra Papel<br /><span class="line2">Tesoura</span></h1>
+        <p>
+          Mostre seu gesto para a câmera e jogue contra a IA. Rede neural
+          treinada com Teachable Machine.
+        </p>
+      </div>
+
+      <!-- Main grid -->
+      <div class="main-grid">
+        <!-- Esquerda: câmera -->
+        <div>
+          <div class="camera-panel">
+            <div class="camera-header">
+              <span class="camera-label">Feed da Câmera</span>
+              <div class="live-dot">
+                <div class="dot" id="live-dot"></div>
+                <span id="live-status">Aguardando</span>
+              </div>
+            </div>
+            <div class="camera-body">
+              <div id="webcam-container">
+                <div class="camera-placeholder" id="cam-placeholder">
+                  <div class="icon">✋</div>
+                  <p>Clique em "Iniciar" para jogar</p>
+                </div>
+              </div>
+              <div class="scan-overlay"></div>
+              <div class="scan-overlay scan-overlay-b"></div>
+              <div class="scan-line" id="scan-line"></div>
+            </div>
+            <div class="camera-footer">
+              <button class="btn-start" id="btn-start" onclick="startCapture()">
+                ▶ Iniciar Câmera
+              </button>
+              <button class="btn-stop" id="btn-stop" onclick="stopCapture()">
+                ■ Parar
+              </button>
+            </div>
+          </div>
+
+          <!-- Model config -->
+          <div class="model-card">
+            <div class="model-title">⚙ Configurar Modelo</div>
+            <input
+              type="text"
+              class="model-url-input"
+              id="model-url"
+              value="https://teachablemachine.withgoogle.com/models/SDcQZ8bSc/"
+              placeholder="URL do modelo Teachable Machine..."
+            />
+            <div class="model-status">
+              <div class="dot" id="model-dot"></div>
+              <span id="model-status-text">Modelo não carregado</span>
+            </div>
+            <div class="demo-notice">
+              💡 <strong>Modo Demo:</strong> Cole a URL do seu modelo exportado
+              do Teachable Machine. As classes devem se chamar
+              <strong>Pedra</strong>, <strong>Papel</strong> e
+              <strong>Tesoura</strong>.
+            </div>
+            <div class="model-hint">
+              Dataset:
+              <a
+                href="https://www.kaggle.com/datasets/drgfreeman/rockpaperscissors"
+                target="_blank"
+                >kaggle.com — drgfreeman/rockpaperscissors</a
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Direita: painéis -->
+        <div class="right-panel">
+          <!-- Gesto detectado -->
+          <div class="gesto-card" id="gesto-card">
+            <div class="gesto-glow"></div>
+            <div class="section-label">▸ Gesto Detectado</div>
+            <div class="gesto-main">
+              <div class="gesto-emoji" id="gesto-emoji">🤚</div>
+              <div class="gesto-info">
+                <div class="gesto-name" id="gesto-name">—</div>
+                <div class="gesto-conf" id="gesto-conf">
+                  Aguardando câmera...
+                </div>
+              </div>
+            </div>
+            <div class="bars" id="bars-container"></div>
+          </div>
+
+          <!-- Batalha IA vs Jogador -->
+          <div class="battle-card">
+            <div class="section-label">▸ Rodada Atual</div>
+            <div class="battle-arena">
+              <div class="battle-side">
+                <div class="battle-who">Você</div>
+                <div class="battle-gesto" id="player-gesto">🤚</div>
+                <div class="battle-gesto-name" id="player-name">—</div>
+              </div>
+              <div class="battle-vs">VS</div>
+              <div class="battle-side">
+                <div class="battle-who">IA</div>
+                <div class="battle-gesto" id="ia-gesto">🤖</div>
+                <div class="battle-gesto-name" id="ia-name">—</div>
+              </div>
+            </div>
+            <div class="resultado-badge" id="resultado">
+              Mostre um gesto para jogar
+            </div>
+          </div>
+
+          <!-- Placar -->
+          <div class="placar-card">
+            <div class="section-label">▸ Placar</div>
+            <div class="placar-grid">
+              <div class="placar-item">
+                <div class="placar-val wins" id="score-wins">0</div>
+                <div class="placar-lbl">Vitórias</div>
+              </div>
+              <div class="placar-item">
+                <div class="placar-val draws" id="score-draws">0</div>
+                <div class="placar-lbl">Empates</div>
+              </div>
+              <div class="placar-item">
+                <div class="placar-val losses" id="score-losses">0</div>
+                <div class="placar-lbl">Derrotas</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Histórico -->
+          <div class="log-card">
+            <div class="log-header">
+              <div class="log-title">▸ Histórico</div>
+              <button class="btn-clear" onclick="clearLog()">Limpar</button>
+            </div>
+            <div class="log-list" id="log-list">
+              <div class="log-empty">Nenhuma rodada jogada</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span id="status-msg"
+          >🟡 Sistema pronto. Aguardando inicialização.</span
+        >
+        <span style="letter-spacing: 1px; text-transform: uppercase"
+          >TensorFlow.js · Teachable Machine</span
+        >
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      // ─── Config ───────────────────────────────────────────────────────────────────
+      const GESTOS = {
+        Pedra: { emoji: "✊", cls: "pedra", vence: "Tesoura" },
+        Papel: { emoji: "🖐️", cls: "papel", vence: "Pedra" },
+        Tesoura: { emoji: "✌️", cls: "tesoura", vence: "Papel" },
+      };
+
+      const IA_GESTOS = ["Pedra", "Papel", "Tesoura"];
+
+      // ─── State ────────────────────────────────────────────────────────────────────
+      let model = null,
+        webcam = null,
+        animFrame = null;
+      let running = false,
+        demoMode = false;
+      let lastGesto = null,
+        lastRoundGesto = null;
+      let roundTimer = null;
+      let score = { wins: 0, draws: 0, losses: 0 };
+
+      // ─── Start ────────────────────────────────────────────────────────────────────
+      async function startCapture() {
+        setStatus("⏳ Carregando modelo...");
+        document.getElementById("btn-start").disabled = true;
+
+        const modelUrl = document.getElementById("model-url").value.trim();
+        const isDemo = modelUrl.includes("SDcQZ8bSc") || modelUrl === "";
+
+        if (!isDemo) {
+          try {
+            const URL = modelUrl.endsWith("/") ? modelUrl : modelUrl + "/";
+            model = await tmImage.load(
+              URL + "model.json",
+              URL + "metadata.json",
+            );
+            demoMode = false;
+            setModelStatus("ok", "Modelo carregado ✓");
+            showToast("Modelo carregado!");
+          } catch (e) {
+            demoMode = true;
+            setModelStatus("err", "Modelo inválido — usando demo");
+            showToast("Modo demo ativado");
+          }
+        } else {
+          demoMode = true;
+          setModelStatus("err", "URL demo — simulação ativa");
+        }
+
+        try {
+          webcam = new tmImage.Webcam(400, 300, true);
+          await webcam.setup();
+          await webcam.play();
+
+          const placeholder = document.getElementById("cam-placeholder");
+          if (placeholder) placeholder.remove();
+          document
+            .getElementById("webcam-container")
+            .appendChild(webcam.canvas);
+
+          running = true;
+          document.getElementById("live-dot").classList.add("active");
+          document.getElementById("live-status").textContent = "AO VIVO";
+          document.getElementById("scan-line").classList.add("active");
+          document.getElementById("btn-stop").classList.add("visible");
+          document.getElementById("btn-start").style.display = "none";
+          setStatus(
+            "🟢 Câmera ativa. Mostre: ✊ Pedra   🖐️ Papel   ✌️ Tesoura",
+          );
+
+          buildBars();
+          loop();
+        } catch (e) {
+          demoMode = true;
+          running = true;
+          document.getElementById("live-dot").classList.add("active");
+          document.getElementById("live-status").textContent = "DEMO";
+          document.getElementById("scan-line").classList.add("active");
+          document.getElementById("btn-stop").classList.add("visible");
+          document.getElementById("btn-start").style.display = "none";
+          document.getElementById("cam-placeholder").innerHTML =
+            `<div class="icon">🎮</div><p style="text-align:center">Webcam indisponível<br>Simulação ativa</p>`;
+          setStatus("🟡 Modo demonstração (sem câmera).");
+          buildBars();
+          loopDemo();
+        }
+
+        document.getElementById("btn-start").disabled = false;
+      }
+
+      // ─── Loops ───────────────────────────────────────────────────────────────────
+      async function loop() {
+        if (!running) return;
+        webcam.update();
+        let preds;
+        if (!demoMode && model) {
+          preds = await model.predict(webcam.canvas);
+        } else {
+          preds = simulatePred();
+        }
+        updateUI(preds);
+        animFrame = requestAnimationFrame(loop);
+      }
+
+      function loopDemo() {
+        if (!running) return;
+        updateUI(simulatePred());
+        animFrame = setTimeout(loopDemo, 600);
+      }
+
+      function simulatePred() {
+        const names = Object.keys(GESTOS);
+        const dom = names[Math.floor(Math.random() * names.length)];
+        const preds = names.map((n) => ({
+          className: n,
+          probability:
+            n === dom ? Math.random() * 0.3 + 0.6 : Math.random() * 0.2,
+        }));
+        const sum = preds.reduce((a, b) => a + b.probability, 0);
+        preds.forEach((p) => (p.probability /= sum));
+        return preds;
+      }
+
+      // ─── Build bars ───────────────────────────────────────────────────────────────
+      function buildBars() {
+        const c = document.getElementById("bars-container");
+        c.innerHTML = "";
+        Object.entries(GESTOS).forEach(([name, cfg]) => {
+          c.innerHTML += `
+      <div class="bar-row">
+        <div class="bar-meta">
+          <span class="bar-label">${cfg.emoji} ${name}</span>
+          <span id="bv-${cfg.cls}" style="font-size:11px;color:var(--${cfg.cls})">0%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${cfg.cls}" id="bf-${cfg.cls}"></div>
+        </div>
+      </div>`;
+        });
+      }
+
+      // ─── Update UI ────────────────────────────────────────────────────────────────
+      function updateUI(preds) {
+        const best = preds.reduce((a, b) =>
+          a.probability > b.probability ? a : b,
+        );
+        const name = best.className;
+        const conf = best.probability;
+        const cfg = GESTOS[name] || { emoji: "❓", cls: "pedra" };
+
+        // Gesto card
+        const card = document.getElementById("gesto-card");
+        card.className = "gesto-card active-" + cfg.cls;
+        document.getElementById("gesto-emoji").textContent = cfg.emoji;
+        document.getElementById("gesto-name").textContent = name;
+        document.getElementById("gesto-conf").textContent =
+          `Confiança: ${(conf * 100).toFixed(1)}%`;
+
+        // Atualiza player lado da batalha em tempo real
+        document.getElementById("player-gesto").textContent = cfg.emoji;
+        document.getElementById("player-name").textContent = name;
+
+        // Barras
+        preds.forEach((p) => {
+          const pcfg = GESTOS[p.className];
+          if (!pcfg) return;
+          const pct = (p.probability * 100).toFixed(1);
+          const fill = document.getElementById("bf-" + pcfg.cls);
+          const val = document.getElementById("bv-" + pcfg.cls);
+          if (fill) fill.style.width = pct + "%";
+          if (val) val.textContent = pct + "%";
+        });
+
+        // Dispara rodada quando gesto é estável por 1.5s com conf > 70%
+        if (name !== lastGesto) {
+          lastGesto = name;
+          clearTimeout(roundTimer);
+          if (conf > 0.7) {
+            roundTimer = setTimeout(() => playRound(name), 1500);
+          }
+        }
+      }
+
+      // ─── Rodada ───────────────────────────────────────────────────────────────────
+      function playRound(playerGesto) {
+        if (playerGesto === lastRoundGesto) return; // evita repetição
+        lastRoundGesto = playerGesto;
+
+        const iaNome = IA_GESTOS[Math.floor(Math.random() * 3)];
+        const iaCfg = GESTOS[iaNome];
+        const plCfg = GESTOS[playerGesto];
+
+        document.getElementById("ia-gesto").textContent = iaCfg.emoji;
+        document.getElementById("ia-name").textContent = iaNome;
+
+        let resultado, cls;
+        if (playerGesto === iaNome) {
+          resultado = "🤝 Empate!";
+          cls = "empate";
+          score.draws++;
+        } else if (plCfg.vence === iaNome) {
+          resultado = "🏆 Você Venceu!";
+          cls = "vitoria";
+          score.wins++;
+        } else {
+          resultado = "💀 IA Venceu!";
+          cls = "derrota";
+          score.losses++;
+        }
+
+        const badge = document.getElementById("resultado");
+        badge.textContent = resultado;
+        badge.className = "resultado-badge " + cls;
+
+        document.getElementById("score-wins").textContent = score.wins;
+        document.getElementById("score-draws").textContent = score.draws;
+        document.getElementById("score-losses").textContent = score.losses;
+
+        addLog(plCfg.emoji, playerGesto, iaCfg.emoji, iaNome, cls);
+      }
+
+      // ─── Log ─────────────────────────────────────────────────────────────────────
+      function addLog(pEmoji, pName, iEmoji, iName, cls) {
+        const list = document.getElementById("log-list");
+        const empty = list.querySelector(".log-empty");
+        if (empty) empty.remove();
+
+        const now = new Date();
+        const time =
+          now.getHours().toString().padStart(2, "0") +
+          ":" +
+          now.getMinutes().toString().padStart(2, "0") +
+          ":" +
+          now.getSeconds().toString().padStart(2, "0");
+
+        const resText = cls === "vitoria" ? "V" : cls === "derrota" ? "D" : "E";
+        const resClass =
+          cls === "vitoria" ? "v" : cls === "derrota" ? "d" : "e";
+
+        const entry = document.createElement("div");
+        entry.className = "log-entry";
+        entry.innerHTML = `
+    <span class="log-time">${time}</span>
+    <span class="log-icon">${pEmoji}</span>
+    <span class="log-text" style="color:var(--muted)">${pName} vs ${iName} ${iEmoji}</span>
+    <span class="log-res ${resClass}">${resText}</span>`;
+        list.prepend(entry);
+        while (list.children.length > 20) list.removeChild(list.lastChild);
+      }
+
+      function clearLog() {
+        document.getElementById("log-list").innerHTML =
+          '<div class="log-empty">Nenhuma rodada jogada</div>';
+        score = { wins: 0, draws: 0, losses: 0 };
+        document.getElementById("score-wins").textContent = 0;
+        document.getElementById("score-draws").textContent = 0;
+        document.getElementById("score-losses").textContent = 0;
+        document.getElementById("resultado").textContent =
+          "Mostre um gesto para jogar";
+        document.getElementById("resultado").className = "resultado-badge";
+        document.getElementById("ia-gesto").textContent = "🤖";
+        document.getElementById("ia-name").textContent = "—";
+        lastRoundGesto = null;
+      }
+
+      // ─── Stop ─────────────────────────────────────────────────────────────────────
+      function stopCapture() {
+        running = false;
+        clearTimeout(roundTimer);
+        if (animFrame) {
+          cancelAnimationFrame(animFrame);
+          clearTimeout(animFrame);
+        }
+        if (webcam) {
+          try {
+            webcam.stop();
+          } catch (e) {}
+          webcam = null;
+        }
+
+        document.getElementById("live-dot").classList.remove("active");
+        document.getElementById("live-status").textContent = "Parado";
+        document.getElementById("scan-line").classList.remove("active");
+        document.getElementById("btn-stop").classList.remove("visible");
+        document.getElementById("btn-start").style.display = "block";
+
+        document.getElementById("webcam-container").innerHTML =
+          `<div class="camera-placeholder" id="cam-placeholder">
+       <div class="icon">✋</div>
+       <p>Clique em "Iniciar" para jogar</p>
+     </div>`;
+
+        document.getElementById("gesto-card").className = "gesto-card";
+        document.getElementById("gesto-emoji").textContent = "🤚";
+        document.getElementById("gesto-name").textContent = "—";
+        document.getElementById("gesto-conf").textContent = "Câmera parada";
+        document.getElementById("bars-container").innerHTML = "";
+        document.getElementById("player-gesto").textContent = "🤚";
+        document.getElementById("player-name").textContent = "—";
+        setStatus("🔴 Câmera parada.");
+        showToast("Sessão encerrada");
+      }
+
+      // ─── Helpers ──────────────────────────────────────────────────────────────────
+      function setStatus(msg) {
+        document.getElementById("status-msg").textContent = msg;
+      }
+
+      function setModelStatus(state, msg) {
+        document.getElementById("model-dot").className = "dot " + state;
+        document.getElementById("model-status-text").textContent = msg;
+      }
+
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2500);
+      }
+    </script>
+  </body>
+</html>
