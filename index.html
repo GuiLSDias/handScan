@@ -929,14 +929,14 @@
               <strong>Pedra</strong>, <strong>Papel</strong> e
               <strong>Tesoura</strong>.
             </div>
-            <div class="model-hint">
+            <!-- <div class="model-hint">
               Dataset:
               <a
                 href="https://www.kaggle.com/datasets/drgfreeman/rockpaperscissors"
                 target="_blank"
                 >kaggle.com — drgfreeman/rockpaperscissors</a
               >
-            </div>
+            </div> -->
           </div>
         </div>
 
@@ -1043,6 +1043,7 @@
       let lastGesto = null,
         lastRoundGesto = null;
       let roundTimer = null;
+      let roundCooldown = false; // Impede múltiplas rodadas seguidas
       let score = { wins: 0, draws: 0, losses: 0 };
 
       // ─── Start ────────────────────────────────────────────────────────────────────
@@ -1051,31 +1052,35 @@
         document.getElementById("btn-start").disabled = true;
 
         const modelUrl = document.getElementById("model-url").value.trim();
-        const isDemo = modelUrl.includes("SDcQZ8bSc") || modelUrl === "";
 
-        if (!isDemo) {
-          try {
-            const URL = modelUrl.endsWith("/") ? modelUrl : modelUrl + "/";
-            model = await tmImage.load(
-              URL + "model.json",
-              URL + "metadata.json",
-            );
-            demoMode = false;
-            setModelStatus("ok", "Modelo carregado ✓");
-            showToast("Modelo carregado!");
-          } catch (e) {
-            demoMode = true;
-            setModelStatus("err", "Modelo inválido — usando demo");
-            showToast("Modo demo ativado");
-          }
-        } else {
+        // Se não há URL customizada, usa a URL padrão que funciona
+        const URL =
+          modelUrl ||
+          "https://teachablemachine.withgoogle.com/models/SDcQZ8bSc/";
+
+        try {
+          // Carrega o modelo exatamente como no código que funciona
+          const modelURL = URL + "model.json";
+          const metadataURL = URL + "metadata.json";
+
+          model = await tmImage.load(modelURL, metadataURL);
+          maxPredictions = model.getTotalClasses();
+
+          demoMode = false;
+          setModelStatus("ok", "Modelo carregado ✓");
+          showToast("Modelo carregado!");
+        } catch (e) {
+          console.error("Erro ao carregar modelo:", e);
           demoMode = true;
-          setModelStatus("err", "URL demo — simulação ativa");
+          setModelStatus("err", "Modelo inválido — usando demo");
+          showToast("Não consegui carregar. Usando Simulação.");
         }
 
         try {
-          webcam = new tmImage.Webcam(400, 300, true);
-          await webcam.setup();
+          // Configura webcam exatamente como no código que funciona
+          const flip = true; // whether to flip the webcam
+          webcam = new tmImage.Webcam(400, 300, flip); // width, height, flip
+          await webcam.setup(); // request access to the webcam
           await webcam.play();
 
           const placeholder = document.getElementById("cam-placeholder");
@@ -1085,6 +1090,7 @@
             .appendChild(webcam.canvas);
 
           running = true;
+          roundCooldown = false; // Reset cooldown
           document.getElementById("live-dot").classList.add("active");
           document.getElementById("live-status").textContent = "AO VIVO";
           document.getElementById("scan-line").classList.add("active");
@@ -1097,8 +1103,10 @@
           buildBars();
           loop();
         } catch (e) {
+          console.error("Erro ao acessar câmera:", e);
           demoMode = true;
           running = true;
+          roundCooldown = false; // Reset cooldown
           document.getElementById("live-dot").classList.add("active");
           document.getElementById("live-status").textContent = "DEMO";
           document.getElementById("scan-line").classList.add("active");
@@ -1117,7 +1125,7 @@
       // ─── Loops ───────────────────────────────────────────────────────────────────
       async function loop() {
         if (!running) return;
-        webcam.update();
+        webcam.update(); // update the webcam frame
         let preds;
         if (!demoMode && model) {
           preds = await model.predict(webcam.canvas);
@@ -1197,11 +1205,12 @@
           if (val) val.textContent = pct + "%";
         });
 
-        // Dispara rodada quando gesto é estável por 1.5s com conf > 70%
+        // Dispara rodada quando gesto é estável por 1.5s com conf > 80%
+        // E apenas se não está em cooldown (evita múltiplas rodadas seguidas)
         if (name !== lastGesto) {
           lastGesto = name;
           clearTimeout(roundTimer);
-          if (conf > 0.7) {
+          if (conf > 0.8 && !roundCooldown) {
             roundTimer = setTimeout(() => playRound(name), 1500);
           }
         }
@@ -1243,6 +1252,13 @@
         document.getElementById("score-losses").textContent = score.losses;
 
         addLog(plCfg.emoji, playerGesto, iaCfg.emoji, iaNome, cls);
+
+        // Ativa cooldown por 2 segundos para evitar múltiplas rodadas seguidas
+        roundCooldown = true;
+        setTimeout(() => {
+          roundCooldown = false;
+          lastRoundGesto = null; // Reseta para poder jogar novamente
+        }, 2000);
       }
 
       // ─── Log ─────────────────────────────────────────────────────────────────────
@@ -1278,6 +1294,8 @@
         document.getElementById("log-list").innerHTML =
           '<div class="log-empty">Nenhuma rodada jogada</div>';
         score = { wins: 0, draws: 0, losses: 0 };
+        roundCooldown = false; // Reset cooldown
+        lastRoundGesto = null; // Reset last round
         document.getElementById("score-wins").textContent = 0;
         document.getElementById("score-draws").textContent = 0;
         document.getElementById("score-losses").textContent = 0;
@@ -1286,12 +1304,12 @@
         document.getElementById("resultado").className = "resultado-badge";
         document.getElementById("ia-gesto").textContent = "🤖";
         document.getElementById("ia-name").textContent = "—";
-        lastRoundGesto = null;
       }
 
       // ─── Stop ─────────────────────────────────────────────────────────────────────
       function stopCapture() {
         running = false;
+        roundCooldown = false; // Reset cooldown
         clearTimeout(roundTimer);
         if (animFrame) {
           cancelAnimationFrame(animFrame);
