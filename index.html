@@ -1033,6 +1033,14 @@
       };
 
       const IA_GESTOS = ["Pedra", "Papel", "Tesoura"];
+      const LABEL_ALIASES = {
+        rock: "Pedra",
+        paper: "Papel",
+        scissors: "Tesoura",
+        pedra: "Pedra",
+        papel: "Papel",
+        tesoura: "Tesoura",
+      };
 
       // ─── State ────────────────────────────────────────────────────────────────────
       let model = null,
@@ -1174,8 +1182,20 @@
       }
 
       // ─── Update UI ────────────────────────────────────────────────────────────────
+      function normalizeLabel(name) {
+        const key = String(name || "")
+          .trim()
+          .toLowerCase();
+        return LABEL_ALIASES[key] || name;
+      }
+
       function updateUI(preds) {
-        const best = preds.reduce((a, b) =>
+        const normalizedPreds = preds.map((p) => ({
+          ...p,
+          className: normalizeLabel(p.className),
+        }));
+
+        const best = normalizedPreds.reduce((a, b) =>
           a.probability > b.probability ? a : b,
         );
         const name = best.className;
@@ -1195,7 +1215,7 @@
         document.getElementById("player-name").textContent = name;
 
         // Barras
-        preds.forEach((p) => {
+        normalizedPreds.forEach((p) => {
           const pcfg = GESTOS[p.className];
           if (!pcfg) return;
           const pct = (p.probability * 100).toFixed(1);
@@ -1218,18 +1238,25 @@
 
       // ─── Rodada ───────────────────────────────────────────────────────────────────
       function playRound(playerGesto) {
-        if (playerGesto === lastRoundGesto) return; // evita repetição
-        lastRoundGesto = playerGesto;
+        const normalizedPlayerGesto = normalizeLabel(playerGesto);
+        const plCfg = GESTOS[normalizedPlayerGesto];
+
+        if (!plCfg) {
+          console.warn("Classe não reconhecida pelo jogo:", playerGesto);
+          return;
+        }
+
+        if (normalizedPlayerGesto === lastRoundGesto) return; // evita repetição
+        lastRoundGesto = normalizedPlayerGesto;
 
         const iaNome = IA_GESTOS[Math.floor(Math.random() * 3)];
         const iaCfg = GESTOS[iaNome];
-        const plCfg = GESTOS[playerGesto];
 
         document.getElementById("ia-gesto").textContent = iaCfg.emoji;
         document.getElementById("ia-name").textContent = iaNome;
 
         let resultado, cls;
-        if (playerGesto === iaNome) {
+        if (normalizedPlayerGesto === iaNome) {
           resultado = "🤝 Empate!";
           cls = "empate";
           score.draws++;
@@ -1251,7 +1278,7 @@
         document.getElementById("score-draws").textContent = score.draws;
         document.getElementById("score-losses").textContent = score.losses;
 
-        addLog(plCfg.emoji, playerGesto, iaCfg.emoji, iaNome, cls);
+        addLog(plCfg.emoji, normalizedPlayerGesto, iaCfg.emoji, iaNome, cls);
 
         // Ativa cooldown por 2 segundos para evitar múltiplas rodadas seguidas
         roundCooldown = true;
